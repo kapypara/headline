@@ -12,12 +12,17 @@ impl HtmlContent {
 
         log::trace!("stringifing HtmlContent: {:?}", self);
 
+        // TODO: move this somewhere else
+
         let header_start = r#"<!doctype html>
 <html lang="en-US">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="bulma.css">
+    <link rel="stylesheet" href="static/bulma.css">
+    <link rel="stylesheet" href="static/custom.css">
+    <script type="text/javascript" src="static/modal.js"></script>
+    <script type="text/javascript" src="static/main.js"></script>
 "#;
 
         let header_end = "</head>\n";

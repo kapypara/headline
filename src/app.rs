@@ -1,20 +1,21 @@
-use actix_web::{get, HttpResponse, Responder, web};
+use actix_web::{get, HttpRequest, HttpResponse, Responder, web};
 use actix_files::NamedFile;
 
+use std::sync::Mutex;
 use futures::executor::block_on;
 
 mod html;
 mod state;
 
-type AppState = web::Data<state::State>;
+type AppState = web::Data<Mutex<state::State>>;
 
 pub fn headline(cfg: &mut web::ServiceConfig) {
     cfg
         .service(index)
-        .service(css)
+        .service(static_files)
         .app_data(
             web::Data::new(
-                init_state()
+                Mutex::new(state::State::new().init())
             )
         );
 }
@@ -28,7 +29,10 @@ async fn index(state: AppState) -> impl Responder {
         None => return HttpResponse::InternalServerError().body("index.html not found")
     };
 
-    let body = state.components.navgation_bar.clone() + &index_file;
+    let body = async {
+        let state = state.lock().unwrap();
+        state.components.navgation_bar.clone() + &index_file + &state.components.footer
+    };
 
 
     HttpResponse::Ok()
@@ -36,30 +40,42 @@ async fn index(state: AppState) -> impl Responder {
             html::HtmlContent {
                 header_tags: None,
                 title: Some("Index Page".to_string()),
-                body: Some(body),
+                body: Some(body.await),
             }.to_string()
         )
 }
 
 
-#[get("/bulma.css")]
-async fn css() -> actix_web::Result<NamedFile> {
-    Ok(NamedFile::open("app/bulma.css")?)
+#[get("/static/{filename:.*}")]
+async fn static_files(req: HttpRequest) -> actix_web::Result<NamedFile> {
+
+    let request: String = req.match_info().query("filename").parse().unwrap();
+
+    let path: String = "app/static/".to_string() + &request;
+
+    log::trace!("requested static file: {:?}", path);
+
+    Ok(NamedFile::open(path)?)
 }
 
-fn init_state() -> state::State {
+impl state::State {
 
-    let mut s = state::State::new();
+    fn init(mut self) -> Self {
+        block_on(
+            async {
+                match read_file("app/nav_header.html").await {
+                    Some(nav) => self.components.navgation_bar = nav,
+                    None => log::error!("failed to load navgation bar, Bad stuff ahead"),
+                }
 
-    block_on(
-        async {
-            match read_file("app/nav_header.html").await {
-                Some(nav) => s.components.navgation_bar = nav,
-                None => log::error!("failed to load navgation bar, Bad stuff ahead"),
-            }
-        });
+                match read_file("app/footer.html").await {
+                    Some(nav) => self.components.footer = nav,
+                    None => log::error!("failed to load footer :("),
+                }
+            });
 
-    s
+        self
+    }
 }
 
 async fn read_file(path: &str) -> Option<String> {
