@@ -1,4 +1,4 @@
-use actix_web::{App, HttpServer, middleware};
+use actix_web::{App, HttpServer, middleware, web};
 
 mod app;
 
@@ -13,10 +13,15 @@ async fn main() -> std::io::Result<()> {
 
     log::info!("starting HTTP server at http://localhost:8080");
 
+    let state = web::Data::new(app::headline_state().await);
+    let pool = web::Data::new(app::headline_database().await);
+
     HttpServer::new(move || {
         App::new()
             .wrap(middleware::Logger::default())
             .configure(app::headline)
+            .app_data(state.clone())
+            .app_data(pool.clone())
     })
     .bind(("127.0.0.1", 8080))?
     .run()

@@ -1,4 +1,7 @@
 use std::vec;
+use std::sync::Mutex;
+
+pub type StateMutex = Mutex<State>;
 
 #[derive(Debug)]
 pub struct State {
@@ -22,5 +25,9 @@ impl State {
             },
         }
         
+    }
+
+    pub fn mutex(self) -> StateMutex {
+        Mutex::new(self)
     }
 }

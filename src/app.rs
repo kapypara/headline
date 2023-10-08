@@ -1,28 +1,39 @@
 use actix_web::{get, HttpRequest, HttpResponse, Responder, web};
 use actix_files::NamedFile;
 
-use std::sync::Mutex;
 use futures::executor::block_on;
 
 mod html;
 mod state;
+mod db;
 
-type AppState = web::Data<Mutex<state::State>>;
+use state::{State, StateMutex};
+use db::{Pool, SqliteConnectionManager};
+
+pub async fn headline_database() -> Pool {
+
+    log::debug!("making a database connection pool");
+
+    let manager = SqliteConnectionManager::file("db/users.db");
+    let pool = Pool::new(manager).unwrap();
+
+    db::check(&pool).await;
+
+    pool
+}
+
+pub async fn headline_state() -> StateMutex {
+    State::new().init().mutex()
+}
 
 pub fn headline(cfg: &mut web::ServiceConfig) {
     cfg
         .service(index)
-        .service(static_files)
-        .app_data(
-            web::Data::new(
-                Mutex::new(state::State::new().init())
-            )
-        );
+        .service(static_files);
 }
 
-
 #[get("/")]
-async fn index(state: AppState) -> impl Responder {
+async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Responder {
 
     let index_file = match read_file("app/index.html").await {
         Some(file) => file,
@@ -58,19 +69,22 @@ async fn static_files(req: HttpRequest) -> actix_web::Result<NamedFile> {
     Ok(NamedFile::open(path)?)
 }
 
-impl state::State {
+impl State {
 
     fn init(mut self) -> Self {
+
+        log::debug!("Making a new state instance");
+
         block_on(
             async {
                 match read_file("app/nav_header.html").await {
                     Some(nav) => self.components.navgation_bar = nav,
-                    None => log::error!("failed to load navgation bar, Bad stuff ahead"),
+                    None => log::warn!("failed to load navgation bar, Bad stuff ahead"),
                 }
 
                 match read_file("app/footer.html").await {
                     Some(nav) => self.components.footer = nav,
-                    None => log::error!("failed to load footer :("),
+                    None => log::warn!("failed to load footer :("),
                 }
             });
 
@@ -88,6 +102,7 @@ async fn read_file(path: &str) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 async fn load_markdown_from_file(path: &str) -> Option<String> {
 
     let file = read_file(path);
