@@ -27,6 +27,7 @@ impl State {
         
     }
 
+    /// Consume self and return mutex wrapped version
     pub fn mutex(self) -> StateMutex {
         Mutex::new(self)
     }

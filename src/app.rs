@@ -6,18 +6,19 @@ use futures::executor::block_on;
 mod html;
 mod state;
 mod db;
+mod pass;
 
 use state::{State, StateMutex};
-use db::{Pool, SqliteConnectionManager};
+use db::{Pool, ConnectionManager};
 
 pub async fn headline_database() -> Pool {
 
     log::debug!("making a database connection pool");
 
-    let manager = SqliteConnectionManager::file("db/users.db");
+    let manager = ConnectionManager::file("db/users.db");
     let pool = Pool::new(manager).unwrap();
 
-    db::check(&pool).await;
+    db::user::check(&pool).await;
 
     pool
 }
@@ -44,6 +45,14 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
         let state = state.lock().unwrap();
         state.components.navgation_bar.clone() + &index_file + &state.components.footer
     };
+
+    async {
+        let conn = db::get_connection(&pool).await;
+
+        let q = db::user::query_username(&conn, "ahmed");
+
+        log::debug!("query result: {:?}", q.await);
+    }.await;
 
 
     HttpResponse::Ok()
