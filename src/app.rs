@@ -53,7 +53,7 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
     async {
         let conn = db::get_connection(&pool).await;
 
-        let q = db::user::query_user_by_username(&conn, "ahmed");
+        let q = db::user::query_user_by_username(&conn, "ahmed4");
 
         log::debug!("query result: {:?}", q.await);
     }.await;
@@ -109,7 +109,11 @@ async fn user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<
     if check {
         Ok(format!("Welcome {}!", info.username))
     } else {
-        Ok(format!("Invalid passowrd mister: {}!", info.username))
+        Err(
+            error::ErrorUnauthorized(
+                format!("Invalid passowrd mister: {}!", info.username)
+            )
+        )
     }
 }
 
@@ -123,7 +127,7 @@ async fn user_singup(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result
         .map_err(error::ErrorInternalServerError)?;
 
     if name_is_used == true {
-        return Err(error::ErrorInternalServerError("Username already taken"))
+        return Err(error::ErrorConflict("Username already taken"))
     } 
 
     let password = crypto::hash_password(&*info.password)
@@ -141,7 +145,7 @@ async fn user_singup(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result
     if user_is_inserted {
         Ok(format!("Hello to our new use: {}!", info.username))
     } else {
-        Ok(format!("Something realy bad happend :("))
+        Err(error::ErrorInternalServerError("Something realy bad happend :("))
     }
 }
 
