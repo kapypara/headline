@@ -4,11 +4,13 @@ use super::{
     Result, QueryResult
 };
 
+use std::sync::Arc;
+
 #[derive(Clone, Debug)]
 pub struct User {
     pub id: usize,
-    pub username: String,
-    pub password: String,
+    pub username: Arc<str>,
+    pub password: Arc<str>,
 }
 
 pub async fn create_table(conn: &Connection) -> Result<usize> {
@@ -17,7 +19,7 @@ pub async fn create_table(conn: &Connection) -> Result<usize> {
 CREATE TABLE IF NOT EXISTS user (
     id       INTEGER PRIMARY KEY,
     username TEXT    UNIQUE NOT NULL,
-    password TEXT    CHECK(length(pass) > 0)
+    password TEXT    CHECK(length(password) > 0)
 )";
 
     conn.execute(stmnt, [])
@@ -64,9 +66,23 @@ pub async fn check(pool: &Pool) {
     }
 }
 
-pub async fn query_username(conn: &Connection, name: &str) -> QueryResult<User> {
+/// return true if a user was inserted
+pub async fn insert_new_user(conn: &Connection, user: &User) -> Result<bool> {
 
-    let stmnt = "SELECT * FROM user WHERE name = ?1";
+    let stmnt = "INSERT INTO user (username, password) VALUES (?1, ?2)";
+
+    Ok(
+        conn.execute(
+            stmnt,
+            [&user.username, &user.password]
+        )? != 0
+    )
+}
+
+/// TODO return a result<User> isntead of QueryResult<User>
+pub async fn query_user_by_username(conn: &Connection, name: &str) -> QueryResult<User> {
+
+    let stmnt = "SELECT * FROM user WHERE username = ?1";
 
     conn.prepare(stmnt)?.query_map(
         [name],
@@ -77,5 +93,13 @@ pub async fn query_username(conn: &Connection, name: &str) -> QueryResult<User> 
                 password: row.get(2)?,
             })
         })?.collect()
-}                       
+}
 
+
+/// return true when username is already exists
+pub async fn check_for_username(conn: &Connection, name: &str) -> Result<bool> {
+
+    let namecheck = query_user_by_username(conn, name).await;
+
+    Ok(namecheck?.len() != 0)
+}

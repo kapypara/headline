@@ -7,7 +7,9 @@ use argon2::{
     Argon2
 };
 
-fn hash_password(password: &str) -> Result<String, Error> {
+use rand::{distributions::Standard, Rng};
+
+pub fn hash_password(password: &str) -> Result<String, Error> {
 
     let salt = SaltString::generate(&mut OsRng);
 
@@ -18,7 +20,7 @@ fn hash_password(password: &str) -> Result<String, Error> {
 }
 
 /// true when password is correct, false when not, error when something goes wrong
-fn verify_password(pass: String, hash: String) -> Result<bool, Error> {
+pub fn verify_password(pass: &str, hash: &str) -> Result<bool, Error> {
 
     let parsed_hash = PasswordHash::new(&hash)?;
 
@@ -27,4 +29,16 @@ fn verify_password(pass: String, hash: String) -> Result<bool, Error> {
         Err(Error::Password) => Ok(false),
         Err(err) => Err(err),
     }
+}
+
+pub fn rand_string() -> String {
+
+    const BYTE_COUNT: usize = 256 / 8;
+
+    let v: Vec<u8> = rand::thread_rng()
+        .sample_iter(Standard)
+        .take(BYTE_COUNT)
+        .collect();
+
+    hex::encode(v)
 }

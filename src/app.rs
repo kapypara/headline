@@ -1,4 +1,4 @@
-use actix_web::{get, HttpRequest, HttpResponse, Responder, web};
+use actix_web::{error, Result, get, post, HttpRequest, HttpResponse, Responder, web};
 use actix_files::NamedFile;
 
 use futures::executor::block_on;
@@ -10,6 +10,8 @@ mod crypto;
 
 use state::{State, StateMutex};
 use db::{Pool, ConnectionManager};
+
+use serde::Deserialize;
 
 pub async fn headline_database() -> Pool {
 
@@ -30,7 +32,9 @@ pub async fn headline_state() -> StateMutex {
 pub fn headline(cfg: &mut web::ServiceConfig) {
     cfg
         .service(index)
-        .service(static_files);
+        .service(static_files)
+        .service(user_singup)
+        .service(user_login);
 }
 
 #[get("/")]
@@ -49,11 +53,10 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
     async {
         let conn = db::get_connection(&pool).await;
 
-        let q = db::user::query_username(&conn, "ahmed");
+        let q = db::user::query_user_by_username(&conn, "ahmed");
 
         log::debug!("query result: {:?}", q.await);
     }.await;
-
 
     HttpResponse::Ok()
         .body(
@@ -76,6 +79,70 @@ async fn static_files(req: HttpRequest) -> actix_web::Result<NamedFile> {
     log::trace!("requested static file: {:?}", path);
 
     Ok(NamedFile::open(path)?)
+}
+
+
+#[derive(Deserialize, Debug)]
+struct UserAuth {
+    username: Box<str>,
+    password: Box<str>,
+}
+
+#[post("/api/user_login")]
+async fn user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
+
+    let conn = db::get_connection(&pool).await;
+
+    let user = db::user::query_user_by_username(&conn, &info.username).await
+        .map_err(error::ErrorInternalServerError)?;
+
+    let user = match user.first() {
+        Some(u) => u,
+        None => return Err(error::ErrorInternalServerError("Username not found"))
+    };
+
+    // let check = *info.password == *user.password;
+    let check = crypto::verify_password(&*info.password, &*user.password)
+        .map_err(error::ErrorInternalServerError)?;
+
+
+    if check {
+        Ok(format!("Welcome {}!", info.username))
+    } else {
+        Ok(format!("Invalid passowrd mister: {}!", info.username))
+    }
+}
+
+
+#[post("/api/user_signup")]
+async fn user_singup(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
+
+    let conn = db::get_connection(&pool).await;
+
+    let name_is_used = db::user::check_for_username(&conn, &*info.username).await
+        .map_err(error::ErrorInternalServerError)?;
+
+    if name_is_used == true {
+        return Err(error::ErrorInternalServerError("Username already taken"))
+    } 
+
+    let password = crypto::hash_password(&*info.password)
+        .map_err(error::ErrorInternalServerError)?;
+
+    let user = db::user::User {
+        id: 0,
+        username: info.username.clone().into(),
+        password: password.into(),
+    };
+
+    let user_is_inserted = db::user::insert_new_user(&conn, &user).await
+        .map_err(error::ErrorInternalServerError)?;
+
+    if user_is_inserted {
+        Ok(format!("Hello to our new use: {}!", info.username))
+    } else {
+        Ok(format!("Something realy bad happend :("))
+    }
 }
 
 impl State {
