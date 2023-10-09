@@ -19,10 +19,11 @@ impl HtmlContent {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="static/bulma.css">
-    <link rel="stylesheet" href="static/custom.css">
+    <link rel="stylesheet" href="static/bulma.css"/>
+    <link rel="stylesheet" href="static/fontawesome.css"/>
+    <link rel="stylesheet" href="static/solid.css"/>
+    <link rel="stylesheet" href="static/custom.css"/>
     <script type="text/javascript" src="static/modal.js"></script>
-    <script type="text/javascript" src="static/main.js"></script>
 "#;
 
         let header_end = "</head>\n";

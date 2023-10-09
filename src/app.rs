@@ -32,9 +32,11 @@ pub async fn headline_state() -> StateMutex {
 pub fn headline(cfg: &mut web::ServiceConfig) {
     cfg
         .service(index)
+        .service(user_login)
         .service(static_files)
-        .service(user_singup)
-        .service(user_login);
+        .service(webfont_files)
+        .service(api_user_singup)
+        .service(api_user_login);
 }
 
 #[get("/")]
@@ -42,7 +44,7 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
 
     let index_file = match read_file("app/index.html").await {
         Some(file) => file,
-        None => return HttpResponse::InternalServerError().body("index.html not found")
+        None => return Err(error::ErrorInternalServerError("index.html not found"))
     };
 
     let body = async {
@@ -50,22 +52,41 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
         state.components.navgation_bar.clone() + &index_file + &state.components.footer
     };
 
-    async {
-        let conn = db::get_connection(&pool).await;
+    Ok(
+        HttpResponse::Ok()
+            .body(
+                html::HtmlContent {
+                    header_tags: None,
+                    title: Some("Index Page".to_string()),
+                    body: Some(body.await),
+                }.to_string()
+            )
+    )
+}
 
-        let q = db::user::query_user_by_username(&conn, "ahmed4");
+#[get("/login")]
+async fn user_login(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Responder {
 
-        log::debug!("query result: {:?}", q.await);
-    }.await;
+    let index_file = match read_file("app/login.html").await {
+        Some(file) => file,
+        None => return Err(error::ErrorInternalServerError("login.html not found"))
+    };
 
-    HttpResponse::Ok()
-        .body(
-            html::HtmlContent {
-                header_tags: None,
-                title: Some("Index Page".to_string()),
-                body: Some(body.await),
-            }.to_string()
-        )
+    let body = async {
+        let state = state.lock().unwrap();
+        state.components.navgation_bar.clone() + &index_file + &state.components.footer
+    };
+
+    Ok(
+        HttpResponse::Ok()
+            .body(
+                html::HtmlContent {
+                    header_tags: None,
+                    title: Some("Index Page".to_string()),
+                    body: Some(body.await),
+                }.to_string()
+            )
+    )
 }
 
 
@@ -81,6 +102,19 @@ async fn static_files(req: HttpRequest) -> actix_web::Result<NamedFile> {
     Ok(NamedFile::open(path)?)
 }
 
+// Font awesome chicanery
+#[get("/webfonts/{filename:.*}")]
+async fn webfont_files(req: HttpRequest) -> actix_web::Result<NamedFile> {
+
+    let request: String = req.match_info().query("filename").parse().unwrap();
+
+    let path: String = "app/static/webfonts/".to_string() + &request;
+
+    log::trace!("requested static file: {:?}", path);
+
+    Ok(NamedFile::open(path)?)
+}
+
 
 #[derive(Deserialize, Debug)]
 struct UserAuth {
@@ -89,7 +123,7 @@ struct UserAuth {
 }
 
 #[post("/api/user_login")]
-async fn user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
+async fn api_user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
 
     let conn = db::get_connection(&pool).await;
 
@@ -119,7 +153,7 @@ async fn user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<
 
 
 #[post("/api/user_signup")]
-async fn user_singup(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
+async fn api_user_singup(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
 
     let conn = db::get_connection(&pool).await;
 
