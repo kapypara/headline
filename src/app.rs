@@ -6,7 +6,7 @@ use futures::executor::block_on;
 mod html;
 mod state;
 mod db;
-mod pass;
+mod crypto;
 
 use state::{State, StateMutex};
 use db::{Pool, ConnectionManager};
