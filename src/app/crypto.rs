@@ -33,7 +33,7 @@ pub fn verify_password(pass: &str, hash: &str) -> Result<bool, Error> {
 
 pub fn rand_string() -> String {
 
-    const BYTE_COUNT: usize = 256 / 8;
+    const BYTE_COUNT: usize = 512 / 8;
 
     let v: Vec<u8> = rand::thread_rng()
         .sample_iter(Standard)

@@ -1,4 +1,6 @@
 use actix_web::{error, Result, get, post, HttpRequest, HttpResponse, Responder, web};
+use actix_web::cookie::{Cookie, SameSite};
+
 use actix_files::NamedFile;
 
 use futures::executor::block_on;
@@ -8,7 +10,7 @@ mod state;
 mod db;
 mod crypto;
 
-use state::{State, StateMutex};
+use state::State;
 use db::{Pool, ConnectionManager};
 
 use serde::Deserialize;
@@ -25,8 +27,8 @@ pub async fn headline_database() -> Pool {
     pool
 }
 
-pub async fn headline_state() -> StateMutex {
-    State::new().init().mutex()
+pub async fn headline_state() -> State {
+    State::new().init()
 }
 
 pub fn headline(cfg: &mut web::ServiceConfig) {
@@ -40,7 +42,19 @@ pub fn headline(cfg: &mut web::ServiceConfig) {
 }
 
 #[get("/")]
-async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Responder {
+async fn index(req: HttpRequest, state: web::Data<State>, pool: web::Data<Pool>) -> impl Responder {
+
+    if let Some(cookie) = req.cookie("session_id") {
+
+        let cookie_value = cookie.value();
+
+        let sessions = state.sessions.lock().unwrap();
+
+        if sessions.contains_key(cookie_value) {
+            return home()
+        }
+    }
+
 
     let index_file = match read_file("app/index.html").await {
         Some(file) => file,
@@ -48,7 +62,6 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
     };
 
     let body = async {
-        let state = state.lock().unwrap();
         state.components.navgation_bar.clone() + &index_file + &state.components.footer
     };
 
@@ -64,17 +77,23 @@ async fn index(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Resp
     )
 }
 
-#[get("/login")]
-async fn user_login(state: web::Data<StateMutex>, pool: web::Data<Pool>) -> impl Responder {
 
-    let index_file = match read_file("app/login.html").await {
+fn home() -> Result<HttpResponse> {
+    Ok(
+        HttpResponse::Ok().body("user home page :)")
+    )
+}
+
+#[get("/login")]
+async fn user_login(state: web::Data<State>, pool: web::Data<Pool>) -> impl Responder {
+
+    let login_file = match read_file("app/login.html").await {
         Some(file) => file,
         None => return Err(error::ErrorInternalServerError("login.html not found"))
     };
 
     let body = async {
-        let state = state.lock().unwrap();
-        state.components.navgation_bar.clone() + &index_file + &state.components.footer
+        state.components.navgation_bar.clone() + &login_file + &state.components.footer
     };
 
     Ok(
@@ -123,7 +142,7 @@ struct UserAuth {
 }
 
 #[post("/api/user_login")]
-async fn api_user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Result<String> {
+async fn api_user_login(pool: web::Data<Pool>, state: web::Data<State>, info: web::Json<UserAuth>) -> impl Responder {
 
     let conn = db::get_connection(&pool).await;
 
@@ -140,15 +159,30 @@ async fn api_user_login(pool: web::Data<Pool>, info: web::Json<UserAuth>) -> Res
         .map_err(error::ErrorInternalServerError)?;
 
 
-    if check {
-        Ok(format!("Welcome {}!", info.username))
-    } else {
-        Err(
-            error::ErrorUnauthorized(
-                format!("Invalid passowrd mister: {}!", info.username)
-            )
+    if !check {
+        return Err(error::ErrorUnauthorized(
+                format!("Invalid passowrd mister: {}!", info.username))
         )
     }
+
+    let session_id: Box<str> = crypto::rand_string().into();
+    let user_id = user.id;
+    
+    let mut sessions = state.sessions.lock().unwrap();
+
+    sessions.insert(session_id.clone(), user_id);
+
+    std::mem::drop(sessions);
+
+    let c = Cookie::build("session_id", session_id.to_string())
+        // .domain("localhost")
+        .path("/")
+        .secure(true)
+        .http_only(true)
+        .same_site(SameSite::Strict)
+    .finish();
+
+    Ok(HttpResponse::Ok().cookie(c).finish())
 }
 
 

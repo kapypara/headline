@@ -45,10 +45,12 @@ document.addEventListener('DOMContentLoaded', () => {
     xhr.setRequestHeader('Content-Type', 'application/json');
 
     xhr.onreadystatechange = function() {
-      if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+      if (xhr.readyState === XMLHttpRequest.DONE) {
+        if (xhr.status === 200) {
 
-        let response = xhr.responseText;
-        console.log(response);
+          location.assign('/')
+        }
+        // TODO handle error
       }
     };
 

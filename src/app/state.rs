@@ -1,11 +1,9 @@
-use std::vec;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
-
-pub type StateMutex = Mutex<State>;
 
 #[derive(Debug)]
 pub struct State {
-    pub sessions: Vec<String>,
+    pub sessions: Mutex<BTreeMap<Box<str>, usize>>,
     pub components: Components,
 }
 
@@ -18,7 +16,7 @@ pub struct Components {
 impl State {
     pub fn new() -> State {
         State {
-            sessions: vec![],
+            sessions: BTreeMap::new().into(),
             components: Components {
                 navgation_bar: String::new(),
                 footer: String::new(),
@@ -27,8 +25,4 @@ impl State {
         
     }
 
-    /// Consume self and return mutex wrapped version
-    pub fn mutex(self) -> StateMutex {
-        Mutex::new(self)
-    }
 }
