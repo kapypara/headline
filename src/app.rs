@@ -1,4 +1,5 @@
-use actix_web::{error, Result, get, post, HttpRequest, HttpResponse, Responder, web};
+use actix_web::{error, Result, get, post, HttpRequest, HttpResponse, HttpResponseBuilder, Responder, web};
+use actix_web::web::redirect;
 use actix_web::cookie::{Cookie, SameSite};
 
 use actix_files::NamedFile;
@@ -36,6 +37,7 @@ pub fn headline(cfg: &mut web::ServiceConfig) {
         .service(index)
         .service(user_login)
         .service(static_files)
+        .service(favicon)
         .service(webfont_files)
         .service(api_user_singup)
         .service(api_user_login);
@@ -44,37 +46,73 @@ pub fn headline(cfg: &mut web::ServiceConfig) {
 #[get("/")]
 async fn index(req: HttpRequest, state: web::Data<State>, pool: web::Data<Pool>) -> impl Responder {
 
-    if let Some(cookie) = req.cookie("session_id") {
+    let mut response = HttpResponse::Ok();
+    let file = read_file("app/index.html");
 
-        let cookie_value = cookie.value();
+    match remove_bad_session_cookie(&req, &state, &mut response) {
 
-        let sessions = state.sessions.lock().unwrap();
+        Some(true) => return home(),
+        Some(false) => {
+            let mut c = Cookie::named("session_id");
 
-        if sessions.contains_key(cookie_value) {
-            return home()
-        }
+            c.make_removal();
+            response.cookie(c);
+        },
+        None => {},
     }
 
-
-    let index_file = match read_file("app/index.html").await {
+    let index_file = match file.await {
         Some(file) => file,
         None => return Err(error::ErrorInternalServerError("index.html not found"))
     };
 
-    let body = async {
-        state.components.navgation_bar.clone() + &index_file + &state.components.footer
-    };
+    let body = state.components.navgation_bar.clone() + &index_file + &state.components.footer;
 
-    Ok(
-        HttpResponse::Ok()
-            .body(
-                html::HtmlContent {
-                    header_tags: None,
-                    title: Some("Index Page".to_string()),
-                    body: Some(body.await),
-                }.to_string()
-            )
+    Ok(response
+        .body(
+            html::HtmlContent {
+                header_tags: None,
+                title: Some("Index Page".to_string()),
+                body: Some(body),
+            }.to_string()
+        )
     )
+}
+
+/// mark session_id cookie for removal if it's not vaild, return the reponse of is_session_vaild()
+fn remove_bad_session_cookie(req: &HttpRequest, state: &web::Data<State>, response: &mut HttpResponseBuilder) -> Option<bool> {
+
+    let is_vaild = is_session_vaild(&req, &state);
+
+    match is_vaild {
+        Some(false) => {
+            let mut c = Cookie::named("session_id");
+
+            c.make_removal();
+            response.cookie(c);
+        }
+        _ => {}
+    }
+
+    return is_vaild;
+}
+
+/// true for vaild, false for not vaild, None when session cookie is not found
+fn is_session_vaild(req: &HttpRequest, state: &web::Data<State>) -> Option<bool> {
+    match req.cookie("session_id") {
+        None => None,
+        Some(cookie) => {
+
+            let cookie_value = cookie.value();
+            let sessions = state.sessions.lock().unwrap();
+
+            if sessions.contains_key(cookie_value) {
+                Some(true)
+            } else {
+                Some(false)
+            }
+        }
+    }
 }
 
 
@@ -119,6 +157,11 @@ async fn static_files(req: HttpRequest) -> actix_web::Result<NamedFile> {
     log::trace!("requested static file: {:?}", path);
 
     Ok(NamedFile::open(path)?)
+}
+
+#[get("/favicon.ico")]
+async fn favicon() -> actix_web::Result<NamedFile> {
+    Ok(NamedFile::open("app/static/ff.png")?)
 }
 
 // Font awesome chicanery
@@ -182,7 +225,10 @@ async fn api_user_login(pool: web::Data<Pool>, state: web::Data<State>, info: we
         .same_site(SameSite::Strict)
     .finish();
 
-    Ok(HttpResponse::Ok().cookie(c).finish())
+    Ok(HttpResponse::Ok()
+        .insert_header(("Location", "/"))
+        .cookie(c)
+        .finish())
 }
 
 

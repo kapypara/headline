@@ -47,8 +47,8 @@ document.addEventListener('DOMContentLoaded', () => {
     xhr.onreadystatechange = function() {
       if (xhr.readyState === XMLHttpRequest.DONE) {
         if (xhr.status === 200) {
-
-          location.assign('/')
+          const redirectLocation = xhr.getResponseHeader("Location")
+          window.location.assign(redirectLocation);
         }
         // TODO handle error
       }
